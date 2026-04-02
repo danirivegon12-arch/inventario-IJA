@@ -4275,27 +4275,5 @@
     "ubicacion": "",
     "documentos": [],
     "updatedAt": "2026-04-02T00:47:20.383Z"
-  },
-  {
-    "id": "1775097121676",
-    "internalNum": "01/2022",
-    "fechaInicio": "",
-    "status": "En proceso de solicitud",
-    "solicitante": "ITZEL",
-    "complementaria": "DANIEL",
-    "materia": "Familiar",
-    "tramite": "Mediación",
-    "asunto": "Arrendamientos",
-    "ijaNum": "",
-    "fechaEnvioIJA": "",
-    "convenioFinal": "No",
-    "fechaFirma": "",
-    "menores": false,
-    "procuraduria": false,
-    "ubicacion": "",
-    "responsable": "",
-    "notas": "",
-    "documentos": [],
-    "updatedAt": "2026-04-02T02:32:01.676Z"
   }
 ]

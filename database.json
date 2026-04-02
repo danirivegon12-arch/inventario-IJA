@@ -4275,5 +4275,27 @@
     "ubicacion": "",
     "documentos": [],
     "updatedAt": "2026-04-02T00:47:20.383Z"
+  },
+  {
+    "id": "1775111330131",
+    "internalNum": "01/2022",
+    "fechaInicio": "",
+    "status": "En proceso de solicitud",
+    "solicitante": "JUAN",
+    "complementaria": "JUAN",
+    "materia": "Familiar",
+    "tramite": "Mediación",
+    "asunto": "No especificado",
+    "ijaNum": "",
+    "fechaEnvioIJA": "",
+    "convenioFinal": "No",
+    "fechaFirma": "",
+    "menores": false,
+    "procuraduria": false,
+    "ubicacion": "",
+    "responsable": "",
+    "notas": "",
+    "documentos": [],
+    "updatedAt": "2026-04-02T06:28:50.133Z"
   }
 ]

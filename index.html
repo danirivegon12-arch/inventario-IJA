@@ -155,7 +155,7 @@
         </footer>
 
         <!-- ========================================== -->
-        <!-- MODAL DE CONFIGURACIÓN NUBE (NUEVO)        -->
+        <!-- MODAL DE CONFIGURACIÓN NUBE                -->
         <!-- ========================================== -->
         <div id="cloudModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl flex flex-col p-8 animate-in zoom-in duration-200">
@@ -181,7 +181,7 @@
                 </div>
                 <div class="flex gap-3 mt-8">
                     <button onclick="saveCloudConfig()" class="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-lg">Guardar Config</button>
-                    <button onclick="syncFromCloud()" class="px-6 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-xs uppercase hover:bg-slate-200 transition-all">Sincronizar</button>
+                    <button onclick="syncFromCloud(false)" class="px-6 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-xs uppercase hover:bg-slate-200 transition-all">Sincronizar</button>
                 </div>
             </div>
         </div>
@@ -225,7 +225,6 @@
                     <button type="button" onclick="switchTab('docs')" id="btn-docs" class="tab-btn flex-1 py-3 px-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer">3. Carpeta F&iacute;sica</button>
                 </div>
 
-                <!-- NOTA: Se quitaron los 'required' del formulario para que el navegador no bloquee el guardado silenciosamente -->
                 <form id="expedienteForm" class="overflow-y-auto p-6 md:p-8 space-y-6 custom-scrollbar">
                     <input type="hidden" id="editId">
                     
@@ -366,7 +365,6 @@
                     <div id="tab-docs" class="tab-content hidden">
                         <div class="bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
                             
-                            <!-- ANEXOS MANUALES (NUEVO) -->
                             <div class="mb-5 p-4 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row gap-3 items-center">
                                 <input type="text" id="customDocInput" placeholder="A&ntilde;adir anexo no listado manualmente..." class="flex-1 w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-bold text-slate-700">
                                 <button type="button" onclick="addCustomDoc()" class="w-full sm:w-auto bg-slate-800 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-slate-700 transition-all">+ Agregar Anexo</button>
@@ -381,7 +379,6 @@
                         <button type="button" onclick="closeModal()" class="py-4 px-8 bg-slate-100 text-slate-500 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase tracking-widest text-xs cursor-pointer">
                             Cancelar
                         </button>
-                        <!-- Usamos type button para forzar validacion en javascript y no en HTML -->
                         <button type="button" onclick="handleSave(event)" class="flex-1 py-4 bg-indigo-700 text-white font-black rounded-2xl hover:bg-indigo-800 shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] uppercase tracking-widest text-xs cursor-pointer">
                             Guardar Expediente
                         </button>
@@ -394,11 +391,10 @@
 
     <!-- SCRIPT PRINCIPAL: BLINDADO UNICODE Y ANTI-CORRUPCION -->
     <script>
-        const DB_KEY = 'ija_db_final_v20'; // Forzamos recarga y limpieza de base de datos
-        const CLOUD_KEY = 'ija_cloud_config'; // Clave para guardar configuración de nube
+        const DB_KEY = 'ija_db_final_v20'; 
+        const CLOUD_KEY = 'ija_cloud_config'; 
         let expedientes = JSON.parse(localStorage.getItem(DB_KEY)) || [];
         
-        // ORDEN OFICIAL DE DOCUMENTOS (Sin caracteres raros, blindado con Unicode)
         const docsList = [
             "Car\u00E1tula", 
             "Solicitud de Servicios", 
@@ -423,8 +419,8 @@
             "Remisi\u00F3n Exp. Validaci\u00F3n", 
             "Remisi\u00F3n de Sanci\u00F3n", 
             "Prevenci\u00F3n", 
-            "Notificaci\u00F3n conoc. prevenci\u00F3n", // Añadido
-            "Cambio de prestador", // Añadido
+            "Notificaci\u00F3n conoc. prevenci\u00F3n", 
+            "Cambio de prestador", 
             "No Sanci\u00F3n", 
             "Acta de Inasistencia", 
             "Acta Circunstanciada", 
@@ -434,7 +430,7 @@
         let tempDocs = [];
 
         // ==========================================
-        // MOTOR CLOUD Y AUTO-SINCRONIZACIÓN INFALIBLE (AGREGADO)
+        // MOTOR CLOUD Y AUTO-SINCRONIZACIÓN INFALIBLE (FIX PARA CORS Y GITHUB API)
         // ==========================================
         
         window.onload = async function() {
@@ -496,14 +492,13 @@
             
             setCloudSyncStatus(true); 
 
-            // Romper caché para asegurar que no estamos editando un archivo viejo
+            // FIX CORS: Se eliminaron cabeceras estrictas (Cache-Control) porque GitHub las bloquea en las peticiones POST/PUT. Solo usamos ?t=... para evadir cache
             const getUrl = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
             const putUrl = `https://api.github.com/repos/${config.repo}/contents/database.json`;
             
             try {
                 const getRes = await fetch(getUrl, { 
-                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
-                    cache: 'no-store'
+                    headers: { 'Authorization': `token ${config.token}`, 'Accept': 'application/vnd.github.v3+json' }
                 });
                 
                 let sha = null;
@@ -515,7 +510,11 @@
                 const content = btoa(unescape(encodeURIComponent(JSON.stringify(expedientes, null, 2))));
                 await fetch(putUrl, {
                     method: 'PUT',
-                    headers: { 'Authorization': `token ${config.token}`, 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Authorization': `token ${config.token}`, 
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json' 
+                    },
                     body: JSON.stringify({
                         message: "Auto-Update Expedientes",
                         content: content,
@@ -539,31 +538,39 @@
                 document.body.classList.add('pdf-active');
             }
             
-            setCloudSyncStatus(true);
+            setCloudSyncStatus(true); 
 
             try {
+                // FIX CORS y FIX IPHONE
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
-                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
-                    cache: 'no-store'
+                    headers: { 'Authorization': `token ${config.token}`, 'Accept': 'application/vnd.github.v3+json' }
                 });
                 
-                if(res.ok) {
-                    const fileData = await res.json();
-                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
-                    
-                    if(JSON.stringify(cloudContent) !== JSON.stringify(expedientes)) {
-                        if (silent || confirm(`Se encontraron ${cloudContent.length} registros en la nube. \u00BFDeseas sobrescribir tu base local?`)) {
-                            expedientes = cloudContent;
-                            localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
-                            renderList();
-                        }
+                if (res.status === 404) {
+                    if (!silent) alert("A\u00FAn no hay respaldo en la nube. Guarda un expediente para crearlo.");
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error("Error HTTP " + res.status);
+                }
+
+                const fileData = await res.json();
+                
+                // FIX IPHONE: Eliminar los saltos de línea de GitHub antes de decodificar Base64
+                const base64Clean = fileData.content.replace(/\s/g, ''); 
+                const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
+                
+                if(JSON.stringify(cloudContent) !== JSON.stringify(expedientes)) {
+                    if (silent || confirm(`Se encontraron ${cloudContent.length} registros en la nube. \u00BFDeseas sobrescribir tu base local?`)) {
+                        expedientes = cloudContent;
+                        localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                        renderList();
                     }
-                } else if(!silent) { 
-                    alert("No se encontr\u00F3 el archivo en GitHub."); 
                 }
             } catch (e) { 
-                if(!silent) alert("Error de conexi\u00F3n."); 
+                if(!silent) alert("Error de conexi\u00F3n al verificar GitHub. Revisa tu Token."); 
             } finally { 
                 setCloudSyncStatus(false); 
                 if(!silent) {
@@ -579,20 +586,18 @@
             
             setCloudSyncStatus(true);
             try {
-                // Anti-Caché definitivo para forzar la lectura del archivo más reciente
+                // FIX CORS: Header simplificado, mantenemos el ?t=timestamp
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
-                    headers: { 
-                        'Authorization': `token ${config.token}`,
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    } 
+                    headers: { 'Authorization': `token ${config.token}`, 'Accept': 'application/vnd.github.v3+json' } 
                 });
                 
                 if(res.ok) {
                     const fileData = await res.json();
-                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
+                    
+                    // FIX IPHONE
+                    const base64Clean = fileData.content.replace(/\s/g, '');
+                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
                     
                     const localDataStr = JSON.stringify(expedientes);
                     const cloudDataStr = JSON.stringify(cloudContent);
@@ -823,7 +828,7 @@
                             expedientes = [...expedientes, ...newExpedientes];
                             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                             renderList();
-                            pushToCloud(); // <-- NUBE ACTUALIZADA
+                            pushToCloud(); 
                         }
                     } else alert("No se detectaron expedientes v\u00E1lidos.");
                 } catch (err) {
@@ -865,7 +870,7 @@
                     });
                     localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                     renderList();
-                    pushToCloud(); // <-- NUBE ACTUALIZADA
+                    pushToCloud();
                 } catch (err) { alert("Error: Archivo no v\u00E1lido."); }
                 event.target.value = '';
             };
@@ -1170,7 +1175,7 @@
             }
         }
 
-        // === GUARDADO SEGURO (MUESTRA ALERTA SI FALTA NUMERO INTERNO) ===
+        // === GUARDADO SEGURO ===
         function handleSave(ev) {
             if (ev) ev.preventDefault();
             
@@ -1211,7 +1216,7 @@
 
             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
             closeModal(); renderList();
-            pushToCloud(); // <-- NUBE: Subida inmediata tras guardar o editar
+            pushToCloud(); 
         }
 
         function deleteExpediente(id) {
@@ -1219,7 +1224,7 @@
                 expedientes = expedientes.filter(x => x.id !== id);
                 localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                 renderList();
-                pushToCloud(); // <-- NUBE: Subida inmediata tras borrar
+                pushToCloud(); 
             }
         }
 
@@ -1325,4 +1330,5 @@
     </script>
 </body>
 </html>
+
 

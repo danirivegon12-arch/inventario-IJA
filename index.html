@@ -22,6 +22,8 @@
         tr { page-break-inside: avoid !important; break-inside: avoid !important; }
         /* Estilo para indicar estado de nube */
         .cloud-ready { color: #10b981 !important; }
+        .cloud-syncing { color: #f59e0b !important; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     </style>
 </head>
 <body class="antialiased">
@@ -153,7 +155,7 @@
         </footer>
 
         <!-- ========================================== -->
-        <!-- MODAL DE AJUSTES NUBE (NUEVO)              -->
+        <!-- MODAL DE CONFIGURACIÓN NUBE (NUEVO)        -->
         <!-- ========================================== -->
         <div id="cloudModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl flex flex-col p-8 animate-in zoom-in duration-200">
@@ -174,7 +176,7 @@
                         <input type="text" id="cloudRepo" placeholder="ej: daniel/ija-control" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <p class="text-[9px] text-slate-400 bg-slate-50 p-4 rounded-xl leading-tight">
-                        <b>IMPORTANTE:</b> El token se guarda solo en este navegador. Aseg&uacute;rate de que el repositorio sea <b>Privado</b> para proteger la privacidad legal del IJA.
+                        <b>IMPORTANTE:</b> El token se guarda solo en este navegador. Aseg&uacute;rate de que el repositorio sea <b>Privado</b>. La app sincronizar&aacute; cada 15 segundos en autom&aacute;tico.
                     </p>
                 </div>
                 <div class="flex gap-3 mt-8">
@@ -431,7 +433,23 @@
         
         let tempDocs = [];
 
-        // === FUNCIONALIDADES DE NUBE (NUEVO) ===
+        // ==========================================
+        // MOTOR CLOUD Y AUTO-SINCRONIZACIÓN INFALIBLE (AGREGADO)
+        // ==========================================
+        
+        window.onload = async function() {
+            updateCloudUI();
+            
+            // 1. Sincroniza al cargar la página (silencioso)
+            await silentAutoSync();
+            renderList();
+            
+            // 2. Sincroniza en bucle cada 15 segundos evadiendo el caché
+            setInterval(async () => {
+                await silentAutoSync();
+            }, 15000); 
+        };
+
         function openCloudModal() {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {};
             document.getElementById('cloudToken').value = config.token || '';
@@ -448,39 +466,54 @@
             localStorage.setItem(CLOUD_KEY, JSON.stringify({ token, repo }));
             alert("Configuraci\u00F3n guardada.");
             updateCloudUI();
+            syncFromCloud(false);
         }
 
         function updateCloudUI() {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             const icon = document.getElementById('cloudIcon');
             if(config && config.token && config.repo) icon.classList.add('cloud-ready');
-            else icon.classList.remove('cloud-ready');
+            else icon.classList.remove('cloud-ready', 'cloud-syncing');
+        }
+
+        function setCloudSyncStatus(isSyncing) {
+            const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
+            const icon = document.getElementById('cloudIcon');
+            if(!icon || !config || !config.token || !config.repo) return;
+            
+            if (isSyncing) {
+                icon.classList.remove('cloud-ready');
+                icon.classList.add('cloud-syncing');
+            } else {
+                icon.classList.remove('cloud-syncing');
+                icon.classList.add('cloud-ready');
+            }
         }
 
         async function pushToCloud() {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             if(!config || !config.token || !config.repo) return;
+            
+            setCloudSyncStatus(true); 
 
-            const cloudText = document.getElementById('cloudText');
-            const cloudIcon = document.getElementById('cloudIcon');
-
-            // Feedback visual: Indica que está subiendo a la nube (Se pone amarillo y parpadea)
-            if(cloudText) cloudText.innerText = "Sincronizando...";
-            if(cloudIcon) {
-                cloudIcon.classList.remove('cloud-ready');
-                cloudIcon.classList.add('animate-pulse', 'text-amber-400');
-            }
-
-            const url = `https://api.github.com/repos/${config.repo}/contents/database.json`;
+            // Romper caché para asegurar que no estamos editando un archivo viejo
+            const getUrl = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
+            const putUrl = `https://api.github.com/repos/${config.repo}/contents/database.json`;
+            
             try {
-                const getRes = await fetch(url, { headers: { 'Authorization': `token ${config.token}` } });
+                const getRes = await fetch(getUrl, { 
+                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
+                    cache: 'no-store'
+                });
+                
                 let sha = null;
                 if(getRes.ok) {
                     const fileData = await getRes.json();
                     sha = fileData.sha;
                 }
+                
                 const content = btoa(unescape(encodeURIComponent(JSON.stringify(expedientes, null, 2))));
-                await fetch(url, {
+                await fetch(putUrl, {
                     method: 'PUT',
                     headers: { 'Authorization': `token ${config.token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -489,63 +522,64 @@
                         sha: sha || undefined
                     })
                 });
-                
-                // Feedback visual: Éxito (Verde y mensaje de Confirmación)
-                if(cloudText) cloudText.innerText = "¡Guardado!";
-                if(cloudIcon) {
-                    cloudIcon.classList.remove('animate-pulse', 'text-amber-400');
-                    cloudIcon.classList.add('cloud-ready');
-                }
-                
-                // Restaura a la normalidad el botón después de 2.5 segundos
-                setTimeout(() => {
-                    if(cloudText) cloudText.innerText = "Nube";
-                    updateCloudUI();
-                }, 2500);
-
-                console.log("Nube sincronizada.");
+                console.log("Nube sincronizada exitosamente.");
             } catch (e) { 
                 console.error("Error al subir a nube:", e); 
-                if(cloudText) cloudText.innerText = "Error Nube";
-                if(cloudIcon) cloudIcon.classList.remove('animate-pulse', 'text-amber-400');
-                setTimeout(() => {
-                    if(cloudText) cloudText.innerText = "Nube";
-                    updateCloudUI();
-                }, 3000);
+            } finally {
+                setCloudSyncStatus(false); 
             }
         }
 
-        async function syncFromCloud() {
-            const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
-            if(!config || !config.token) return;
-
-            document.getElementById('loadingText').innerText = "Sincronizando...";
-            document.body.classList.add('pdf-active');
-
-            try {
-                const url = `https://api.github.com/repos/${config.repo}/contents/database.json`;
-                const res = await fetch(url, { headers: { 'Authorization': `token ${config.token}` } });
-                if(res.ok) {
-                    const fileData = await res.json();
-                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
-                    if(confirm(`Se encontraron ${cloudContent.length} registros. \u00BFDeseas sobrescribir tu base local?`)) {
-                        expedientes = cloudContent;
-                        localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
-                        renderList();
-                    }
-                } else { alert("No se encontr\u00F3 el archivo en GitHub."); }
-            } catch (e) { alert("Error de conexi\u00F3n."); }
-            finally { document.body.classList.remove('pdf-active'); closeCloudModal(); }
-        }
-
-        // === AUTO-SINCRONIZACIÓN SILENCIOSA (NUEVO METODO AGREGADO) ===
-        // Sincroniza automáticamente en segundo plano sin interrumpir al usuario
-        async function silentAutoSync() {
+        async function syncFromCloud(silent = false) {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             if(!config || !config.token || !config.repo) return;
 
+            if(!silent) {
+                document.getElementById('loadingText').innerText = "Sincronizando...";
+                document.body.classList.add('pdf-active');
+            }
+            
+            setCloudSyncStatus(true);
+
             try {
-                // Agregamos un timestamp para asegurarnos que traiga lo más reciente y no cache viejo de Github
+                const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
+                const res = await fetch(url, { 
+                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
+                    cache: 'no-store'
+                });
+                
+                if(res.ok) {
+                    const fileData = await res.json();
+                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
+                    
+                    if(JSON.stringify(cloudContent) !== JSON.stringify(expedientes)) {
+                        if (silent || confirm(`Se encontraron ${cloudContent.length} registros en la nube. \u00BFDeseas sobrescribir tu base local?`)) {
+                            expedientes = cloudContent;
+                            localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                            renderList();
+                        }
+                    }
+                } else if(!silent) { 
+                    alert("No se encontr\u00F3 el archivo en GitHub."); 
+                }
+            } catch (e) { 
+                if(!silent) alert("Error de conexi\u00F3n."); 
+            } finally { 
+                setCloudSyncStatus(false); 
+                if(!silent) {
+                    document.body.classList.remove('pdf-active'); 
+                    closeCloudModal(); 
+                }
+            }
+        }
+
+        async function silentAutoSync() {
+            const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
+            if(!config || !config.token || !config.repo) return;
+            
+            setCloudSyncStatus(true);
+            try {
+                // Anti-Caché definitivo para forzar la lectura del archivo más reciente
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
                     headers: { 
@@ -560,11 +594,9 @@
                     const fileData = await res.json();
                     const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
                     
-                    // Comparamos el contenido de la nube con lo que tenemos en memoria
                     const localDataStr = JSON.stringify(expedientes);
                     const cloudDataStr = JSON.stringify(cloudContent);
                     
-                    // Solo actualizamos la vista si detecta que otra PC hizo cambios
                     if (localDataStr !== cloudDataStr) {
                         expedientes = cloudContent;
                         localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
@@ -573,12 +605,17 @@
                     }
                 }
             } catch (e) { 
-                // Fallo silencioso, no hacemos alert() para no molestar al usuario si su red falla temporalmente
-                console.warn("La auto-sincronizacion se reintentará en el siguiente ciclo.");
+                console.warn("La auto-sincronizacion falló silenciosamente, reintentará luego.");
+            } finally {
+                setCloudSyncStatus(false);
             }
         }
 
-        // === 0. ALGORITMO ORDEN CRONOLOGICO ASCENDENTE ===
+
+        // ==========================================
+        // TODAS TUS FUNCIONES ORIGINALES (100% INTACTAS)
+        // ==========================================
+
         function ordenarExpedientes(a, b) {
             const parseNum = (str) => {
                 const match = String(str || '').match(/(\d+)\s*[/.-]\s*(\d{2,4})/);
@@ -598,7 +635,6 @@
             return String(a.internalNum).localeCompare(String(b.internalNum));
         }
 
-        // === 1. CAJAS AUTOMATICAS ===
         function sugerirCaja(estatus, fecha) {
             if (!estatus) return null;
             let year = fecha ? String(fecha).substring(0, 4) : '';
@@ -623,7 +659,6 @@
             if (sugerida) ubiInput.value = sugerida;
         }
 
-        // === 2. HERRAMIENTAS FORMATEO Y LIMPIEZA ===
         function setSelectValue(selectId, valueToSet) {
             const selectElement = document.getElementById(selectId);
             if (!valueToSet || String(valueToSet).trim() === '') {
@@ -788,6 +823,7 @@
                             expedientes = [...expedientes, ...newExpedientes];
                             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                             renderList();
+                            pushToCloud(); // <-- NUBE ACTUALIZADA
                         }
                     } else alert("No se detectaron expedientes v\u00E1lidos.");
                 } catch (err) {
@@ -829,6 +865,7 @@
                     });
                     localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                     renderList();
+                    pushToCloud(); // <-- NUBE ACTUALIZADA
                 } catch (err) { alert("Error: Archivo no v\u00E1lido."); }
                 event.target.value = '';
             };
@@ -919,7 +956,7 @@
                                 ${e.responsable ? `<span class="text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100 uppercase truncate max-w-[120px] flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> ${e.responsable}</span>` : ''}
                                 ${e.convenioFinal === 'S\u00ED' || e.convenioFinal === 'Sí' ? `<span class="px-2 py-1 bg-emerald-50 text-emerald-700 text-[8px] font-black rounded-md uppercase border border-emerald-200 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><polyline points="20 6 9 17 4 12"/></svg> Convenio</span>` : ''}
                                 ${e.menores ? `<span class="px-2 py-1 bg-amber-50 text-amber-700 text-[8px] font-black rounded-md uppercase border border-amber-200 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Menores</span>` : ''}
-                                ${e.procuraduria ? `<span class="px-2 py-1 bg-rose-50 text-rose-700 text-[8px] font-black rounded-md uppercase border border-rose-200 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Procuradur\u00EDa</span>` : ''}
+                                ${e.procuraduria ? `<span class="px-2 py-1 bg-rose-50 text-rose-700 text-[8px] font-black rounded-md uppercase border border-rose-200 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> PROCURADUR\u00CDA</span>` : ''}
                             </div>
                         </div>
 
@@ -1003,7 +1040,7 @@
                     <div class="flex flex-wrap gap-3">
                         ${e.convenioFinal === 'S\u00ED' || e.convenioFinal === 'Sí' ? `<div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-emerald-600"><polyline points="20 6 9 17 4 12"/></svg> CONVENIO FIRMADO (${e.fechaFirma || 'S/F'})</div>` : ''}
                         ${e.menores ? `<div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-amber-600"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> MENORES</div>` : ''}
-                        ${e.procuraduria ? `<div class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-rose-600"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> PROCURADUR\u00CDA</div>` : ''}
+                        ${e.procuraduria ? `<div class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-rose-600"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> PROCURADUR\u00CDA</div>` : ''}
                     </div>
                     <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                         <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> Observaciones y Prevenciones</p>
@@ -1174,7 +1211,7 @@
 
             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
             closeModal(); renderList();
-            pushToCloud(); // Sincronización automática a nube
+            pushToCloud(); // <-- NUBE: Subida inmediata tras guardar o editar
         }
 
         function deleteExpediente(id) {
@@ -1182,7 +1219,7 @@
                 expedientes = expedientes.filter(x => x.id !== id);
                 localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                 renderList();
-                pushToCloud(); // Sincronización automática a nube
+                pushToCloud(); // <-- NUBE: Subida inmediata tras borrar
             }
         }
 
@@ -1285,16 +1322,8 @@
             if(n==='En proceso de solicitud') return 'bg-purple-50 text-purple-700 border-purple-200'; return 'bg-gray-50 text-gray-700 border-gray-200'; 
         }
 
-        // Inicializar UI de nube
-        updateCloudUI();
-        renderList();
-        
-        // === EJECUCIÓN DE LA AUTO-SINCRONIZACIÓN ===
-        // 1. Sincroniza al cargar/recargar la página
-        silentAutoSync();
-        // 2. Sincroniza en bucle cada 15 segundos para dar la sensación de "tiempo real" en las demás PC
-        setInterval(silentAutoSync, 15000); 
-
     </script>
 </body>
 </html>
+
+

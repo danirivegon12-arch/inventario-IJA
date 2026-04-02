@@ -20,10 +20,9 @@
         .pdf-active #pdfLoading { display: flex; }
         /* Evita que el PDF parta los registros a la mitad */
         tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-        
-        /* ESTADOS DE LA NUBE SOLICITADOS */
-        .cloud-syncing { color: #f59e0b !important; fill: #f59e0b !important; animation: pulse 1.5s infinite; }
-        .cloud-online { color: #10b981 !important; fill: #10b981 !important; filter: drop-shadow(0 0 3px #10b98133); }
+        /* Estilo para indicar estado de nube */
+        .cloud-ready { color: #10b981 !important; }
+        .cloud-syncing { color: #f59e0b !important; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     </style>
 </head>
@@ -49,15 +48,15 @@
                     </div>
                     <div>
                         <h1 class="text-xl font-black tracking-tight leading-none">IJA CONTROL</h1>
-                        <p id="cloudStatusLabel" class="text-[9px] uppercase font-bold text-slate-500 tracking-widest mt-1 italic">Modo Local</p>
+                        <p class="text-[9px] uppercase font-bold text-emerald-400 tracking-widest mt-1">Inventario Seguro Definitivo</p>
                     </div>
                 </div>
                 
                 <div class="flex gap-3">
-                    <!-- BOTÓN NUBE -->
-                    <button onclick="openCloudModal()" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all border border-slate-700 cursor-pointer" title="Ajustes de Nube">
+                    <!-- BOTÓN NUBE INSERTADO -->
+                    <button onclick="openCloudModal()" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all border border-slate-700 cursor-pointer" title="Configurar Nube">
                         <svg id="cloudIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19c.7 0 1.3-.2 1.8-.7s.7-1.1.7-1.8c0-1.2-.9-2.3-2.1-2.4l-.1-.4c-.1-2.2-1.9-4-4.1-4-1.5 0-2.8.8-3.5 2-.4-.2-.8-.3-1.2-.3C7.2 11.4 6 12.6 6 14.1c0 .4.1.8.3 1.1-.9.4-1.6 1.3-1.6 2.4 0 1.5 1.2 2.7 2.7 2.7l10.1-.3Z"/></svg>
-                        <span class="hidden md:inline">Cloud</span>
+                        <span id="cloudText" class="hidden md:inline">Nube</span>
                     </button>
 
                     <div class="relative group">
@@ -150,12 +149,13 @@
             <div id="expedientesList" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
         </main>
 
+        <!-- Marca de agua sutil al final de la página (solo UI) -->
         <footer class="py-4 text-center text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase select-none no-print opacity-80">
             J. Daniel Rivera G.
         </footer>
 
         <!-- ========================================== -->
-        <!-- MODAL DE CONFIGURACIÓN NUBE                -->
+        <!-- MODAL DE CONFIGURACIÓN NUBE (NUEVO)        -->
         <!-- ========================================== -->
         <div id="cloudModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
             <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl flex flex-col p-8 animate-in zoom-in duration-200">
@@ -168,11 +168,11 @@
                 </div>
                 <div class="space-y-4">
                     <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">GitHub Token</label>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2">GitHub Token</label>
                         <input type="password" id="cloudToken" placeholder="ghp_xxxxxxxxxxxx" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Repositorio (Usuario/Repo)</label>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Repositorio (Usuario/Repo)</label>
                         <input type="text" id="cloudRepo" placeholder="ej: daniel/ija-control" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <p class="text-[9px] text-slate-400 bg-slate-50 p-4 rounded-xl leading-tight">
@@ -181,7 +181,7 @@
                 </div>
                 <div class="flex gap-3 mt-8">
                     <button onclick="saveCloudConfig()" class="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-emerald-500 transition-all shadow-lg">Guardar Config</button>
-                    <button onclick="syncFromCloud(false)" class="px-6 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-xs uppercase hover:bg-slate-200 transition-all">Sincronizar</button>
+                    <button onclick="syncFromCloud()" class="px-6 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-xs uppercase hover:bg-slate-200 transition-all">Sincronizar</button>
                 </div>
             </div>
         </div>
@@ -225,9 +225,11 @@
                     <button type="button" onclick="switchTab('docs')" id="btn-docs" class="tab-btn flex-1 py-3 px-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer">3. Carpeta F&iacute;sica</button>
                 </div>
 
+                <!-- NOTA: Se quitaron los 'required' del formulario para que el navegador no bloquee el guardado silenciosamente -->
                 <form id="expedienteForm" class="overflow-y-auto p-6 md:p-8 space-y-6 custom-scrollbar">
                     <input type="hidden" id="editId">
                     
+                    <!-- TAB 1: DATOS FUNDAMENTALES -->
                     <div id="tab-fund" class="tab-content space-y-6">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div class="space-y-1.5">
@@ -305,6 +307,7 @@
                         </div>
                     </div>
 
+                    <!-- TAB 2: DETALLES IJA -->
                     <div id="tab-extra" class="tab-content hidden space-y-6">
                         <div class="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div class="space-y-1.5">
@@ -359,8 +362,11 @@
                         </div>
                     </div>
 
+                    <!-- TAB 3: DOCUMENTOS -->
                     <div id="tab-docs" class="tab-content hidden">
                         <div class="bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+                            
+                            <!-- ANEXOS MANUALES (NUEVO) -->
                             <div class="mb-5 p-4 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row gap-3 items-center">
                                 <input type="text" id="customDocInput" placeholder="A&ntilde;adir anexo no listado manualmente..." class="flex-1 w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-bold text-slate-700">
                                 <button type="button" onclick="addCustomDoc()" class="w-full sm:w-auto bg-slate-800 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-slate-700 transition-all">+ Agregar Anexo</button>
@@ -375,6 +381,7 @@
                         <button type="button" onclick="closeModal()" class="py-4 px-8 bg-slate-100 text-slate-500 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase tracking-widest text-xs cursor-pointer">
                             Cancelar
                         </button>
+                        <!-- Usamos type button para forzar validacion en javascript y no en HTML -->
                         <button type="button" onclick="handleSave(event)" class="flex-1 py-4 bg-indigo-700 text-white font-black rounded-2xl hover:bg-indigo-800 shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] uppercase tracking-widest text-xs cursor-pointer">
                             Guardar Expediente
                         </button>
@@ -385,10 +392,10 @@
 
     </div>
 
-    <!-- SCRIPT PRINCIPAL: LÓGICA ORIGINAL + MOTOR CLOUD ANTI-CACHÉ E iOS FIX -->
+    <!-- SCRIPT PRINCIPAL: BLINDADO UNICODE Y ANTI-CORRUPCION -->
     <script>
-        const DB_KEY = 'ija_db_final_v20'; 
-        const CLOUD_KEY = 'ija_cloud_config'; 
+        const DB_KEY = 'ija_db_final_v20'; // Forzamos recarga y limpieza de base de datos
+        const CLOUD_KEY = 'ija_cloud_config'; // Clave para guardar configuración de nube
         let expedientes = JSON.parse(localStorage.getItem(DB_KEY)) || [];
         
         // ORDEN OFICIAL DE DOCUMENTOS (Sin caracteres raros, blindado con Unicode)
@@ -416,8 +423,8 @@
             "Remisi\u00F3n Exp. Validaci\u00F3n", 
             "Remisi\u00F3n de Sanci\u00F3n", 
             "Prevenci\u00F3n", 
-            "Notificaci\u00F3n conoc. prevenci\u00F3n",
-            "Cambio de prestador", 
+            "Notificaci\u00F3n conoc. prevenci\u00F3n", // Añadido
+            "Cambio de prestador", // Añadido
             "No Sanci\u00F3n", 
             "Acta de Inasistencia", 
             "Acta Circunstanciada", 
@@ -427,15 +434,17 @@
         let tempDocs = [];
 
         // ==========================================
-        // MOTOR CLOUD: AUTO-SYNC, CACHE-BUSTER & iOS FIX
+        // MOTOR CLOUD Y AUTO-SINCRONIZACIÓN INFALIBLE (AGREGADO)
         // ==========================================
         
         window.onload = async function() {
             updateCloudUI();
-            await silentAutoSync(); 
+            
+            // 1. Sincroniza al cargar la página (silencioso)
+            await silentAutoSync();
             renderList();
             
-            // Ciclo de 15 segundos evadiendo caché de GitHub
+            // 2. Sincroniza en bucle cada 15 segundos evadiendo el caché
             setInterval(async () => {
                 await silentAutoSync();
             }, 15000); 
@@ -455,22 +464,16 @@
             const repo = document.getElementById('cloudRepo').value.trim();
             if(!token || !repo) { alert("Completa ambos campos."); return; }
             localStorage.setItem(CLOUD_KEY, JSON.stringify({ token, repo }));
-            alert("Configuraci\u00F3n guardada exitosamente en esta PC.");
+            alert("Configuraci\u00F3n guardada.");
             updateCloudUI();
-            syncFromCloud(false); // Sincronización inmediata al guardar
+            syncFromCloud(false);
         }
 
         function updateCloudUI() {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             const icon = document.getElementById('cloudIcon');
-            const label = document.getElementById('cloudStatusLabel');
-            if(config && config.token && config.repo) {
-                icon.classList.add('cloud-ready');
-                label.innerText = "Cloud Auto-Sync (15s)";
-                label.classList.replace('text-slate-500', 'text-emerald-500');
-            } else {
-                icon.classList.remove('cloud-ready', 'cloud-syncing');
-            }
+            if(config && config.token && config.repo) icon.classList.add('cloud-ready');
+            else icon.classList.remove('cloud-ready', 'cloud-syncing');
         }
 
         function setCloudSyncStatus(isSyncing) {
@@ -491,18 +494,16 @@
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             if(!config || !config.token || !config.repo) return;
             
-            setCloudSyncStatus(true);
+            setCloudSyncStatus(true); 
 
-            // ANTI-CACHÉ: Parámetro único por milisegundo para la lectura
+            // Romper caché para asegurar que no estamos editando un archivo viejo
             const getUrl = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
             const putUrl = `https://api.github.com/repos/${config.repo}/contents/database.json`;
             
             try {
                 const getRes = await fetch(getUrl, { 
-                    headers: { 
-                        'Authorization': `token ${config.token}`, 
-                        'Cache-Control': 'no-cache, no-store, must-revalidate' 
-                    }
+                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
+                    cache: 'no-store'
                 });
                 
                 let sha = null;
@@ -516,15 +517,16 @@
                     method: 'PUT',
                     headers: { 'Authorization': `token ${config.token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        message: "Actualizacion automatica (Local)",
+                        message: "Auto-Update Expedientes",
                         content: content,
                         sha: sha || undefined
                     })
                 });
+                console.log("Nube sincronizada exitosamente.");
             } catch (e) { 
                 console.error("Error al subir a nube:", e); 
             } finally {
-                setCloudSyncStatus(false);
+                setCloudSyncStatus(false); 
             }
         }
 
@@ -540,39 +542,28 @@
             setCloudSyncStatus(true);
 
             try {
-                // ANTI-CACHÉ Y FIX PARA iPHONE
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
-                    headers: { 
-                        'Authorization': `token ${config.token}`,
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    }
+                    headers: { 'Authorization': `token ${config.token}`, 'Cache-Control': 'no-cache' },
+                    cache: 'no-store'
                 });
                 
-                if (res.status === 404 && !silent) {
-                    alert("A\u00FAn no existe archivo en la nube. Guarda un expediente para crearlo.");
-                    return;
-                }
-
                 if(res.ok) {
                     const fileData = await res.json();
-                    
-                    // IOS BUG FIX: Safari falla al decodificar base64 si tiene saltos de línea (que GitHub pone por defecto)
-                    const base64Clean = fileData.content.replace(/\s/g, ''); 
-                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
+                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
                     
                     if(JSON.stringify(cloudContent) !== JSON.stringify(expedientes)) {
-                        if (silent || confirm(`Se detectaron cambios en la nube. \u00BFActualizar ahora?`)) {
+                        if (silent || confirm(`Se encontraron ${cloudContent.length} registros en la nube. \u00BFDeseas sobrescribir tu base local?`)) {
                             expedientes = cloudContent;
                             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                             renderList();
                         }
                     }
+                } else if(!silent) { 
+                    alert("No se encontr\u00F3 el archivo en GitHub."); 
                 }
             } catch (e) { 
-                if(!silent) alert("Error de conexi\u00F3n con GitHub."); 
+                if(!silent) alert("Error de conexi\u00F3n."); 
             } finally { 
                 setCloudSyncStatus(false); 
                 if(!silent) {
@@ -588,6 +579,7 @@
             
             setCloudSyncStatus(true);
             try {
+                // Anti-Caché definitivo para forzar la lectura del archivo más reciente
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
                     headers: { 
@@ -600,19 +592,20 @@
                 
                 if(res.ok) {
                     const fileData = await res.json();
-                    // IOS BUG FIX
-                    const base64Clean = fileData.content.replace(/\s/g, '');
-                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
+                    const cloudContent = JSON.parse(decodeURIComponent(escape(atob(fileData.content))));
                     
-                    if (JSON.stringify(expedientes) !== JSON.stringify(cloudContent)) {
+                    const localDataStr = JSON.stringify(expedientes);
+                    const cloudDataStr = JSON.stringify(cloudContent);
+                    
+                    if (localDataStr !== cloudDataStr) {
                         expedientes = cloudContent;
                         localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
-                        // Al estar en background, renderizamos la lista discretamente
-                        renderList(); 
+                        renderList();
+                        console.log("Datos actualizados silenciosamente desde la nube.");
                     }
                 }
             } catch (e) { 
-                console.warn("Fallo silencioso auto-sync");
+                console.warn("La auto-sincronizacion falló silenciosamente, reintentará luego.");
             } finally {
                 setCloudSyncStatus(false);
             }
@@ -830,7 +823,7 @@
                             expedientes = [...expedientes, ...newExpedientes];
                             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                             renderList();
-                            pushToCloud(); // <-- ACTUALIZA NUBE TRAS IMPORTAR EXCEL
+                            pushToCloud(); // <-- NUBE ACTUALIZADA
                         }
                     } else alert("No se detectaron expedientes v\u00E1lidos.");
                 } catch (err) {
@@ -872,7 +865,7 @@
                     });
                     localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                     renderList();
-                    pushToCloud(); // <-- ACTUALIZA NUBE TRAS RESTAURAR RESPALDO JSON
+                    pushToCloud(); // <-- NUBE ACTUALIZADA
                 } catch (err) { alert("Error: Archivo no v\u00E1lido."); }
                 event.target.value = '';
             };
@@ -1177,7 +1170,7 @@
             }
         }
 
-        // === GUARDADO SEGURO CON SUBIDA A LA NUBE ===
+        // === GUARDADO SEGURO (MUESTRA ALERTA SI FALTA NUMERO INTERNO) ===
         function handleSave(ev) {
             if (ev) ev.preventDefault();
             
@@ -1218,7 +1211,7 @@
 
             localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
             closeModal(); renderList();
-            pushToCloud(); // <-- AGREGADO AL ORIGINAL: Sube al instante al guardar/editar
+            pushToCloud(); // <-- NUBE: Subida inmediata tras guardar o editar
         }
 
         function deleteExpediente(id) {
@@ -1226,7 +1219,7 @@
                 expedientes = expedientes.filter(x => x.id !== id);
                 localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                 renderList();
-                pushToCloud(); // <-- AGREGADO AL ORIGINAL: Sube al instante al borrar
+                pushToCloud(); // <-- NUBE: Subida inmediata tras borrar
             }
         }
 
@@ -1332,5 +1325,4 @@
     </script>
 </body>
 </html>
-
 

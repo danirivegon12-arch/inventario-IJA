@@ -20,27 +20,5 @@
     "notas": "",
     "documentos": [],
     "updatedAt": "2026-04-02T00:22:54.866Z"
-  },
-  {
-    "id": "1775089554812",
-    "internalNum": "45554656",
-    "fechaInicio": "",
-    "status": "En proceso de solicitud",
-    "solicitante": "KLNKLI",
-    "complementaria": "UIYHUI",
-    "materia": "Familiar",
-    "tramite": "Mediación",
-    "asunto": "Asuntos comunitarios",
-    "ijaNum": "",
-    "fechaEnvioIJA": "",
-    "convenioFinal": "No",
-    "fechaFirma": "",
-    "menores": false,
-    "procuraduria": false,
-    "ubicacion": "",
-    "responsable": "",
-    "notas": "",
-    "documentos": [],
-    "updatedAt": "2026-04-02T00:25:54.812Z"
   }
 ]

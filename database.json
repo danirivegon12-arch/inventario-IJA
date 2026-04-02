@@ -22,28 +22,6 @@
     "updatedAt": "2026-04-02T00:18:46.378Z"
   },
   {
-    "id": "1775089323282",
-    "internalNum": "23/2024",
-    "fechaInicio": "2026-04-01",
-    "status": "En proceso de solicitud",
-    "solicitante": "JUAN",
-    "complementaria": "DANIEL",
-    "materia": "Familiar",
-    "tramite": "Mediación",
-    "asunto": "Mediación escolar",
-    "ijaNum": "",
-    "fechaEnvioIJA": "",
-    "convenioFinal": "No",
-    "fechaFirma": "",
-    "menores": false,
-    "procuraduria": false,
-    "ubicacion": "",
-    "responsable": "",
-    "notas": "",
-    "documentos": [],
-    "updatedAt": "2026-04-02T00:22:03.287Z"
-  },
-  {
     "id": "1775089374866",
     "internalNum": "23/2024",
     "fechaInicio": "",

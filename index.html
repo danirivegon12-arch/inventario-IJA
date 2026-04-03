@@ -6,8 +6,11 @@
     <title>IJA - Sistema de Gesti&oacute;n Local Master</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- HTML2PDF para exportar reportes -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- jsPDF y autoTable para exportar reportes nativos (Reemplaza a html2pdf) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    
     <!-- SheetJS para Excel (.xlsx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
@@ -1228,9 +1231,8 @@
             }
         }
 
-        // === GENERACION PDF LEGAL HORIZONTAL PROTEGIDO ===
+        // === GENERACION PDF LEGAL HORIZONTAL NATIVO (Reescrito para jsPDF) ===
         function cleanPDFText(text) {
-            // Convierte TODO a mayusculas sin acentos para 100% compatibilidad PDF
             if(!text) return '';
             return String(text).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         }
@@ -1241,75 +1243,101 @@
             if (data.length === 0) { alert("No hay expedientes para exportar."); return; }
 
             data = data.sort(ordenarExpedientes);
-            document.getElementById('loadingText').innerText = "Generando PDF Legal...";
+            document.getElementById('loadingText').innerText = "Generando PDF Nativo...";
             document.body.classList.add('pdf-active');
 
-            const container = document.createElement('div');
-            container.style.padding = '20px';
-            container.style.fontFamily = 'Arial, sans-serif';
-            container.style.color = '#000';
-            container.style.backgroundColor = '#fff';
-            container.style.width = '345mm'; 
+            // Timeout para permitir que la pantalla de carga se renderice antes del proceso bloqueante
+            setTimeout(() => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    // Generar PDF en formato Legal, Horizontal (Landscape), medido en milímetros
+                    const doc = new jsPDF('l', 'mm', 'legal');
 
-            // CREADO CON TEXTOS LIMPIOS Y REGLA PARA NO PARTIR LA FILA (page-break-inside: avoid)
-            let rowsHtml = data.map(e => `
-                <tr class="pdf-row" style="border-bottom: 1px solid #cbd5e1; page-break-inside: avoid !important;">
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1; font-weight: bold;">
-                        ${cleanPDFText(e.internalNum)}<br>
-                        <span style="font-size:8px; font-weight:normal; color:#64748b">${cleanPDFText(e.ijaNum || 'SIN FOLIO IJA')}</span>
-                    </td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1;">
-                        ${cleanPDFText(e.tramite)}<br>
-                        <span style="font-size:8px; color:#64748b; display:block;">${cleanPDFText(e.materia)} - ${cleanPDFText(e.asunto || 'N/A')}</span>
-                    </td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1;">${cleanPDFText(e.solicitante)}</td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1;">${cleanPDFText(e.complementaria)}</td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1; font-weight: bold;">
-                        ${cleanPDFText(e.status)}<br>
-                        <span style="font-size:8px; font-weight:normal; color:#475569">UBIC: ${cleanPDFText(e.ubicacion || 'N/A')}<br>RESP: ${cleanPDFText(e.responsable || 'N/A')}</span>
-                    </td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1; font-size:8px; line-height: 1.4;">
-                        CONV: <b>${cleanPDFText(e.convenioFinal)}</b> (${cleanPDFText(e.fechaFirma || 'S/F')})<br>
-                        MENORES: <b>${e.menores ? 'SI' : 'NO'}</b><br>
-                        PROC: <b>${e.procuraduria ? 'SI' : 'NO'}</b>
-                    </td>
-                    <td style="padding: 8px 6px; border: 1px solid #cbd5e1; font-size:8px; line-height: 1.4;">
-                        ${Array.isArray(e.documentos) && e.documentos.length > 0 ? cleanPDFText(e.documentos.join(', ')) : 'SIN DOCUMENTOS ANEXOS'}
-                    </td>
-                </tr>
-            `).join('');
+                    // --- Encabezado ---
+                    doc.setFontSize(16);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("INVENTARIO OFICIAL IJA", 14, 15);
+                    
+                    doc.setFontSize(9);
+                    doc.setTextColor(71, 85, 105);
+                    doc.text("CENTRO DE METODOS ALTERNOS", 14, 20);
 
-            container.innerHTML = `
-                <div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end;">
-                    <div><h1 style="font-size: 22px; font-weight: 900; margin: 0;">INVENTARIO OFICIAL IJA</h1><p style="font-size: 11px; font-weight: bold; color: #475569; margin: 4px 0 0 0;">CENTRO DE METODOS ALTERNOS</p></div>
-                    <div style="text-align: right; font-size: 11px; font-weight: bold;"><p style="margin: 0;">FECHA: ${new Date().toLocaleDateString()}</p><p style="margin: 4px 0 0 0;">ESTATUS: ${(tipo==='todos')?'COMPLETO':cleanPDFText(filter)}</p></div>
-                </div>
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: left;">
-                    <thead style="background-color: #f1f5f9;"><tr>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 10%;">INTERNO / IJA</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 15%;">TRAMITE / ASUNTO</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 16%;">SOLICITANTE</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 16%;">COMPLEMENTARIA</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 12%;">ESTATUS/UBIC/RESP.</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 11%;">ESPECIALES</th>
-                        <th style="padding: 10px 8px; border: 1px solid #cbd5e1; width: 20%;">CARPETA (DOCS)</th>
-                    </tr></thead>
-                    <tbody>${rowsHtml}</tbody>
-                </table>
-                <div style="margin-top: 15px; text-align: right; font-size: 11px; font-weight: bold; color: #475569;">TOTAL DE EXPEDIENTES: ${data.length}</div>
-            `;
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(10);
+                    doc.text(`FECHA: ${new Date().toLocaleDateString()}`, pageWidth - 14, 15, { align: 'right' });
+                    doc.text(`ESTATUS: ${(tipo === 'todos') ? 'COMPLETO' : cleanPDFText(filter)}`, pageWidth - 14, 20, { align: 'right' });
 
-            // PDF Legal Horizontal (Respetando CSS page-break)
-            const opt = { 
-                margin: [10, 10, 10, 10], 
-                filename: `IJA_Reporte_${tipo}_${new Date().getTime()}.pdf`, 
-                image: { type: 'jpeg', quality: 0.98 }, 
-                html2canvas: { scale: 2, useCORS: true }, 
-                jsPDF: { unit: 'mm', format: 'legal', orientation: 'landscape' },
-                pagebreak: { mode: ['css', 'legacy'] }
-            };
-            
-            html2pdf().set(opt).from(container).save().then(() => { document.body.classList.remove('pdf-active'); }).catch(err => { document.body.classList.remove('pdf-active'); alert("Error al generar el PDF."); });
+                    // Línea separadora
+                    doc.setDrawColor(0, 0, 0);
+                    doc.setLineWidth(0.5);
+                    doc.line(14, 23, pageWidth - 14, 23);
+
+                    // --- Mapear y preparar datos de la tabla ---
+                    const tableData = data.map(e => {
+                        const docsList = Array.isArray(e.documentos) && e.documentos.length > 0 ? cleanPDFText(e.documentos.join(', ')) : 'SIN DOCUMENTOS ANEXOS';
+                        
+                        return [
+                            `${cleanPDFText(e.internalNum)}\nIJA: ${cleanPDFText(e.ijaNum || 'SIN FOLIO')}`,
+                            `${cleanPDFText(e.tramite)}\n${cleanPDFText(e.materia)} - ${cleanPDFText(e.asunto || 'N/A')}`,
+                            cleanPDFText(e.solicitante),
+                            cleanPDFText(e.complementaria),
+                            `${cleanPDFText(e.status)}\nUBIC: ${cleanPDFText(e.ubicacion || 'N/A')}\nRESP: ${cleanPDFText(e.responsable || 'N/A')}`,
+                            `CONV: ${cleanPDFText(e.convenioFinal)} (${cleanPDFText(e.fechaFirma || 'S/F')})\nMENORES: ${e.menores ? 'SI' : 'NO'}\nPROC: ${e.procuraduria ? 'SI' : 'NO'}`,
+                            docsList
+                        ];
+                    });
+
+                    // --- Renderizar AutoTable (Tabla) ---
+                    doc.autoTable({
+                        startY: 28,
+                        head: [['INTERNO / IJA', 'TRAMITE / ASUNTO', 'SOLICITANTE', 'COMPLEMENTARIA', 'ESTATUS/UBIC/RESP.', 'ESPECIALES', 'CARPETA (DOCS)']],
+                        body: tableData,
+                        theme: 'grid',
+                        styles: { 
+                            fontSize: 7, 
+                            cellPadding: 2,
+                            valign: 'middle',
+                            lineColor: [203, 213, 225],
+                            lineWidth: 0.1
+                        },
+                        headStyles: {
+                            fillColor: [241, 245, 249],
+                            textColor: [0, 0, 0],
+                            fontStyle: 'bold'
+                        },
+                        columnStyles: {
+                            0: { cellWidth: 28 }, // INTERNO
+                            1: { cellWidth: 35 }, // TRAMITE
+                            2: { cellWidth: 45 }, // SOLICITANTE
+                            3: { cellWidth: 45 }, // COMPLEMENTARIA
+                            4: { cellWidth: 38 }, // ESTATUS
+                            5: { cellWidth: 35 }, // ESPECIALES
+                            6: { cellWidth: 'auto' } // CARPETA
+                        },
+                        margin: { top: 25, left: 14, right: 14, bottom: 20 },
+                        rowPageBreak: 'avoid',
+                        didDrawPage: function(data) {
+                            // --- Pie de página en cada hoja generada ---
+                            const pageCount = doc.internal.getNumberOfPages();
+                            const pageHeight = doc.internal.pageSize.getHeight();
+                            doc.setFontSize(8);
+                            doc.setFont("helvetica", "bold");
+                            doc.setTextColor(71, 85, 105);
+                            doc.text(`Página ${pageCount}`, 14, pageHeight - 10);
+                            doc.text(`TOTAL DE EXPEDIENTES: ${tableData.length}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
+                        }
+                    });
+
+                    // Guardar el PDF y finalizar carga
+                    doc.save(`IJA_Reporte_${tipo}_${new Date().getTime()}.pdf`);
+                } catch(err) {
+                    console.error("Error al generar PDF nativo:", err);
+                    alert("Error al generar el PDF nativo.");
+                } finally {
+                    document.body.classList.remove('pdf-active');
+                }
+            }, 100); // 100ms dan tiempo al UI a mostrar "Procesando..."
         }
 
         // Colores
@@ -1330,5 +1358,4 @@
     </script>
 </body>
 </html>
-
 

@@ -179,7 +179,7 @@
                         <input type="text" id="cloudRepo" placeholder="ej: daniel/ija-control" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <p class="text-[9px] text-slate-400 bg-slate-50 p-4 rounded-xl leading-tight">
-                        <b>IMPORTANTE:</b> El token se guarda solo en este navegador. Aseg&uacute;rate de que el repositorio sea <b>Privado</b>. La app sincronizar&aacute; cada 15 segundos en autom&aacute;tico.
+                        <b>IMPORTANTE:</b> El token se guarda solo en este navegador. Aseg&uacute;rate de que el repositorio sea <b>Privado</b>. La app sincronizar&aacute; cada 15 segundos en autom&aacute;tico y usar&aacute; <b>Fusion Sync</b> para mezclar datos offline/online sin sobreescribir.
                     </p>
                 </div>
                 <div class="flex gap-3 mt-8">
@@ -392,7 +392,7 @@
 
     </div>
 
-    <!-- SCRIPT PRINCIPAL: BLINDADO UNICODE Y ANTI-CORRUPCION -->
+    <!-- SCRIPT PRINCIPAL: BLINDADO UNICODE, LWW FUSION SYNC Y ANTI-CORRUPCION -->
     <script>
         const DB_KEY = 'ija_db_final_v20'; 
         const CLOUD_KEY = 'ija_cloud_config'; 
@@ -433,8 +433,54 @@
         let tempDocs = [];
 
         // ==========================================
-        // MOTOR CLOUD Y AUTO-SINCRONIZACIÓN INFALIBLE (FIX PARA CORS Y GITHUB API)
+        // MOTOR CLOUD CON FUSION SYNC (LWW RESOLUTION)
         // ==========================================
+
+        // FUNCIÓN DE FUSIÓN (MERGE) BASADA EN TIEMPO
+        function mergeDatasets(localData, cloudData) {
+            const mergedMap = new Map();
+            let hasChangesFromCloud = false;
+            let needsToPushMerged = false;
+
+            // 1. Cargamos todos los datos locales en el mapa
+            localData.forEach(item => mergedMap.set(item.id, { ...item }));
+
+            // 2. Evaluamos los datos de la nube
+            cloudData.forEach(cloudItem => {
+                const localItem = mergedMap.get(cloudItem.id);
+                
+                if (!localItem) {
+                    // Si está en la nube pero no en local, lo agregamos (alguien lo creó online)
+                    mergedMap.set(cloudItem.id, { ...cloudItem });
+                    hasChangesFromCloud = true;
+                } else {
+                    // Si existe en ambos, gana el que se modificó más recientemente (LWW - Last Write Wins)
+                    const localTime = new Date(localItem.updatedAt || 0).getTime();
+                    const cloudTime = new Date(cloudItem.updatedAt || 0).getTime();
+                    
+                    if (cloudTime > localTime) {
+                        mergedMap.set(cloudItem.id, { ...cloudItem });
+                        hasChangesFromCloud = true;
+                    } else if (localTime > cloudTime) {
+                        // Si local es más nuevo, conservamos local pero sabemos que hay que subirlo
+                        needsToPushMerged = true;
+                    }
+                }
+            });
+
+            // 3. Verificamos si hay elementos locales que la nube no tiene en absoluto (creados 100% offline)
+            localData.forEach(localItem => {
+                if (!cloudData.find(c => c.id === localItem.id)) {
+                    needsToPushMerged = true;
+                }
+            });
+
+            return {
+                mergedResult: Array.from(mergedMap.values()),
+                hasChangesFromCloud,
+                needsToPushMerged
+            };
+        }
         
         window.onload = async function() {
             updateCloudUI();
@@ -490,12 +536,17 @@
         }
 
         async function pushToCloud() {
+            if (!navigator.onLine) {
+                // Si estamos offline, no intentamos subir, se subirá automáticamente en el próximo AutoSync con internet
+                console.log("Offline: Guardado localmente. Se aplicará Fusion Sync al recuperar conexión.");
+                return;
+            }
+
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             if(!config || !config.token || !config.repo) return;
             
             setCloudSyncStatus(true); 
 
-            // FIX CORS: Se eliminaron cabeceras estrictas (Cache-Control) porque GitHub las bloquea en las peticiones POST/PUT. Solo usamos ?t=... para evadir cache
             const getUrl = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
             const putUrl = `https://api.github.com/repos/${config.repo}/contents/database.json`;
             
@@ -519,7 +570,7 @@
                         'Content-Type': 'application/json' 
                     },
                     body: JSON.stringify({
-                        message: "Auto-Update Expedientes",
+                        message: "Auto-Update Expedientes (Fusion Sync)",
                         content: content,
                         sha: sha || undefined
                     })
@@ -535,16 +586,19 @@
         async function syncFromCloud(silent = false) {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
             if(!config || !config.token || !config.repo) return;
+            if (!navigator.onLine) {
+                if(!silent) alert("Estás trabajando sin conexión (Offline). Los cambios se guardan localmente y se fusionarán al tener internet.");
+                return;
+            }
 
             if(!silent) {
-                document.getElementById('loadingText').innerText = "Sincronizando...";
+                document.getElementById('loadingText').innerText = "Fusionando datos...";
                 document.body.classList.add('pdf-active');
             }
             
             setCloudSyncStatus(true); 
 
             try {
-                // FIX CORS y FIX IPHONE
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
                     headers: { 'Authorization': `token ${config.token}`, 'Accept': 'application/vnd.github.v3+json' }
@@ -555,23 +609,32 @@
                     return;
                 }
 
-                if (!res.ok) {
-                    throw new Error("Error HTTP " + res.status);
-                }
+                if (!res.ok) throw new Error("Error HTTP " + res.status);
 
                 const fileData = await res.json();
-                
-                // FIX IPHONE: Eliminar los saltos de línea de GitHub antes de decodificar Base64
                 const base64Clean = fileData.content.replace(/\s/g, ''); 
                 const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
                 
-                if(JSON.stringify(cloudContent) !== JSON.stringify(expedientes)) {
-                    if (silent || confirm(`Se encontraron ${cloudContent.length} registros en la nube. \u00BFDeseas sobrescribir tu base local?`)) {
-                        expedientes = cloudContent;
-                        localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
-                        renderList();
-                    }
+                // APLICAR FUSION SYNC
+                const { mergedResult, hasChangesFromCloud, needsToPushMerged } = mergeDatasets(expedientes, cloudContent);
+                
+                if (hasChangesFromCloud) {
+                    expedientes = mergedResult;
+                    localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                    renderList();
+                    if(!silent) setTimeout(() => alert("Sincronización Inteligente: Se han fusionado los datos de la nube con los tuyos."), 300);
+                } else if (!silent && !needsToPushMerged) {
+                    setTimeout(() => alert("Tu base de datos ya está completamente sincronizada."), 300);
                 }
+
+                // Si al fusionar resulta que tus datos locales eran MÁS NUEVOS que los de la nube
+                // (ej. trabajaste offline toda la tarde y acabas de reconectar), forzamos la subida de la fusión total.
+                if (needsToPushMerged) {
+                    expedientes = mergedResult;
+                    localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                    await pushToCloud(); // Sube la mezcla perfecta a GitHub
+                }
+
             } catch (e) { 
                 if(!silent) alert("Error de conexi\u00F3n al verificar GitHub. Revisa tu Token."); 
             } finally { 
@@ -585,11 +648,10 @@
 
         async function silentAutoSync() {
             const config = JSON.parse(localStorage.getItem(CLOUD_KEY));
-            if(!config || !config.token || !config.repo) return;
+            if(!config || !config.token || !config.repo || !navigator.onLine) return;
             
             setCloudSyncStatus(true);
             try {
-                // FIX CORS: Header simplificado, mantenemos el ?t=timestamp
                 const url = `https://api.github.com/repos/${config.repo}/contents/database.json?t=${new Date().getTime()}`;
                 const res = await fetch(url, { 
                     headers: { 'Authorization': `token ${config.token}`, 'Accept': 'application/vnd.github.v3+json' } 
@@ -597,19 +659,24 @@
                 
                 if(res.ok) {
                     const fileData = await res.json();
-                    
-                    // FIX IPHONE
                     const base64Clean = fileData.content.replace(/\s/g, '');
                     const cloudContent = JSON.parse(decodeURIComponent(escape(atob(base64Clean))));
                     
-                    const localDataStr = JSON.stringify(expedientes);
-                    const cloudDataStr = JSON.stringify(cloudContent);
+                    // APLICAR FUSION SYNC EN SEGUNDO PLANO
+                    const { mergedResult, hasChangesFromCloud, needsToPushMerged } = mergeDatasets(expedientes, cloudContent);
                     
-                    if (localDataStr !== cloudDataStr) {
-                        expedientes = cloudContent;
+                    if (hasChangesFromCloud) {
+                        expedientes = mergedResult;
                         localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
                         renderList();
-                        console.log("Datos actualizados silenciosamente desde la nube.");
+                        console.log("Fusion Sync aplicado silenciosamente.");
+                    }
+                    
+                    if (needsToPushMerged) {
+                        // Alguien trabajó offline localmente y reconectó, o hay un choque que ganó el local
+                        expedientes = mergedResult;
+                        localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                        await pushToCloud();
                     }
                 }
             } catch (e) { 
@@ -621,7 +688,7 @@
 
 
         // ==========================================
-        // TODAS TUS FUNCIONES ORIGINALES (100% INTACTAS)
+        // TODAS TUS FUNCIONES ORIGINALES
         // ==========================================
 
         function ordenarExpedientes(a, b) {
@@ -712,14 +779,13 @@
             return String(raw).charAt(0).toUpperCase() + String(raw).slice(1).toLowerCase();
         }
 
-        // LIMPIEZA INICIAL: Repara bases de datos que quedaron vacias por errores
+        // LIMPIEZA INICIAL
         let dataModificada = false;
         expedientes = expedientes.map(e => {
             const correcto = normalizeStatus(e.status);
             if (e.status !== correcto) { e.status = correcto; dataModificada = true; }
             const cajaLogica = sugerirCaja(e.status, e.fechaInicio);
             if (cajaLogica && e.ubicacion !== cajaLogica) { e.ubicacion = cajaLogica; dataModificada = true; }
-            // Proteccion contra corrupcion en documentos (esto provocaba la lista blanca)
             if (!Array.isArray(e.documentos)) { e.documentos = []; dataModificada = true; }
             return e;
         });
@@ -788,13 +854,13 @@
                                 let y = parts[2];
                                 let m = parts[1].padStart(2, '0');
                                 let d = parts[0].padStart(2, '0');
-                                if (y.length === 2) y = "20" + y; // Arregla 2/08/23 -> 2023
+                                if (y.length === 2) y = "20" + y;
                                 rawDate = `${y}-${m}-${d}`;
                             }
                         } else if (!isNaN(rawDate) && rawDate !== '') {
                             let excelDate = parseFloat(rawDate);
-                            let jsDate = new Date((excelDate - 25569) * 86400 * 1000); // 25569 Excel Offset
-                            jsDate = new Date(jsDate.getTime() + (12 * 60 * 60 * 1000)); // Correccion zona horaria
+                            let jsDate = new Date((excelDate - 25569) * 86400 * 1000);
+                            jsDate = new Date(jsDate.getTime() + (12 * 60 * 60 * 1000));
                             if(!isNaN(jsDate.getTime())) rawDate = jsDate.toISOString().split('T')[0];
                         }
 
@@ -820,8 +886,9 @@
                             notas: observacionesFinales,
                             responsable: cols[17] ? String(cols[17]).trim().toUpperCase() : '',
                             ubicacion: cajaLista, 
-                            documentos: [], // Importante: Siempre array
-                            updatedAt: new Date().toISOString()
+                            documentos: [], 
+                            updatedAt: new Date().toISOString(),
+                            _deleted: false // Variable base para el nuevo sistema
                         });
                     }
 
@@ -882,13 +949,16 @@
 
         // === RENDERIZADO INTERFAZ ===
         function renderList() {
+            // Ignorar los elementos eliminados (Tombstones) para la interfaz y stats
+            const activeExpedientes = expedientes.filter(e => !e._deleted);
+            
             const search = document.getElementById('searchInput').value.toLowerCase();
             const filter = document.getElementById('statusFilter').value;
             const container = document.getElementById('expedientesList');
             const empty = document.getElementById('emptyState');
             const stats = document.getElementById('statsGrid');
 
-            const filtered = expedientes.filter(e => {
+            const filtered = activeExpedientes.filter(e => {
                 const text = `${e.internalNum} ${e.ijaNum || ''} ${e.solicitante} ${e.complementaria} ${e.tramite} ${e.asunto || ''} ${e.responsable || ''} ${e.ubicacion || ''}`.toLowerCase();
                 const matchSearch = text.indexOf(search) !== -1;
                 const matchFilter = filter === 'Todos' || e.status === normalizeStatus(filter);
@@ -901,7 +971,7 @@
                 <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                     <p class="text-[8px] font-black text-slate-400 uppercase mb-1 tracking-tighter truncate" title="${s}">${s}</p>
                     <p class="text-2xl font-black ${s === 'Todos' ? 'text-indigo-600' : 'text-slate-800'}">
-                        ${s === 'Todos' ? expedientes.length : expedientes.filter(x => x.status === s).length}
+                        ${s === 'Todos' ? activeExpedientes.length : activeExpedientes.filter(x => x.status === s).length}
                     </p>
                 </div>
             `).join('');
@@ -913,7 +983,6 @@
                 empty.classList.add('hidden');
                 container.innerHTML = filtered.map(e => {
                     let docsHtml = '';
-                    // Array.isArray PREVIENE la pantalla en blanco
                     if (Array.isArray(e.documentos) && e.documentos.length > 0) {
                         const vis = e.documentos.slice(0, 5);
                         const ext = e.documentos.length - 5;
@@ -1079,7 +1148,7 @@
             tempDocs.forEach(d => updateDocUI(d, true));
         }
 
-        // FUNCION PARA AGREGAR ANEXOS MANUALES (NUEVA)
+        // FUNCION PARA AGREGAR ANEXOS MANUALES
         function addCustomDoc() {
             const input = document.getElementById('customDocInput');
             const val = input.value.trim().toUpperCase();
@@ -1178,14 +1247,14 @@
             }
         }
 
-        // === GUARDADO SEGURO ===
+        // === GUARDADO SEGURO (Mantiene updatedAt fresco para el LWW Fusion) ===
         function handleSave(ev) {
             if (ev) ev.preventDefault();
             
             const internalVal = document.getElementById('internalNum').value.trim();
             if (!internalVal) {
                 alert("Debes ingresar el No. Interno para poder guardar.");
-                switchTab('fund'); // Te regresa a la primera pestaña automáticamente
+                switchTab('fund'); 
                 document.getElementById('internalNum').focus();
                 return;
             }
@@ -1211,7 +1280,8 @@
                 responsable: document.getElementById('responsable')?.value.toUpperCase().trim() || '',
                 notas: document.getElementById('notas')?.value.trim() || '',
                 documentos: [...tempDocs],
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
+                _deleted: false // Explicitamente no eliminado
             };
 
             if (id) { expedientes[expedientes.findIndex(x => x.id === id)] = data; } 
@@ -1222,38 +1292,45 @@
             pushToCloud(); 
         }
 
+        // === BORRADO POR TOMBSTONES (Clave para LWW Offline) ===
         function deleteExpediente(id) {
             if (confirm("\u00BFEst\u00E1s seguro de eliminar permanentemente este expediente?")) {
-                expedientes = expedientes.filter(x => x.id !== id);
-                localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
-                renderList();
-                pushToCloud(); 
+                // En lugar de borrarlo del array, lo marcamos como eliminado y le ponemos fecha.
+                // Así cuando fusione con la nube, la nube dirá "¡Ah, lo borraste!" y lo borrará allá también.
+                const idx = expedientes.findIndex(x => x.id === id);
+                if (idx > -1) {
+                    expedientes[idx]._deleted = true;
+                    expedientes[idx].updatedAt = new Date().toISOString(); 
+                    localStorage.setItem(DB_KEY, JSON.stringify(expedientes));
+                    renderList();
+                    pushToCloud(); 
+                }
             }
         }
 
-        // === GENERACION PDF LEGAL HORIZONTAL NATIVO (Reescrito para jsPDF) ===
+        // === GENERACION PDF LEGAL HORIZONTAL NATIVO ===
         function cleanPDFText(text) {
             if(!text) return '';
             return String(text).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         }
 
         function generatePDF(tipo) {
+            // Ignorar los elementos eliminados (Tombstones) para el PDF
+            const activeExpedientes = expedientes.filter(e => !e._deleted);
+
             const filter = document.getElementById('statusFilter').value;
-            let data = (tipo === 'todos') ? expedientes : expedientes.filter(x => x.status === filter || filter === 'Todos');
+            let data = (tipo === 'todos') ? activeExpedientes : activeExpedientes.filter(x => x.status === filter || filter === 'Todos');
             if (data.length === 0) { alert("No hay expedientes para exportar."); return; }
 
             data = data.sort(ordenarExpedientes);
             document.getElementById('loadingText').innerText = "Generando PDF Nativo...";
             document.body.classList.add('pdf-active');
 
-            // Timeout para permitir que la pantalla de carga se renderice antes del proceso bloqueante
             setTimeout(() => {
                 try {
                     const { jsPDF } = window.jspdf;
-                    // Generar PDF en formato Legal, Horizontal (Landscape), medido en milímetros
                     const doc = new jsPDF('l', 'mm', 'legal');
 
-                    // --- Encabezado ---
                     doc.setFontSize(16);
                     doc.setFont("helvetica", "bold");
                     doc.text("INVENTARIO OFICIAL IJA", 14, 15);
@@ -1268,12 +1345,10 @@
                     doc.text(`FECHA: ${new Date().toLocaleDateString()}`, pageWidth - 14, 15, { align: 'right' });
                     doc.text(`ESTATUS: ${(tipo === 'todos') ? 'COMPLETO' : cleanPDFText(filter)}`, pageWidth - 14, 20, { align: 'right' });
 
-                    // Línea separadora
                     doc.setDrawColor(0, 0, 0);
                     doc.setLineWidth(0.5);
                     doc.line(14, 23, pageWidth - 14, 23);
 
-                    // --- Mapear y preparar datos de la tabla ---
                     const tableData = data.map(e => {
                         const docsList = Array.isArray(e.documentos) && e.documentos.length > 0 ? cleanPDFText(e.documentos.join(', ')) : 'SIN DOCUMENTOS ANEXOS';
                         
@@ -1288,7 +1363,6 @@
                         ];
                     });
 
-                    // --- Renderizar AutoTable (Tabla) ---
                     doc.autoTable({
                         startY: 28,
                         head: [['INTERNO / IJA', 'TRAMITE / ASUNTO', 'SOLICITANTE', 'COMPLEMENTARIA', 'ESTATUS/UBIC/RESP.', 'ESPECIALES', 'CARPETA (DOCS)']],
@@ -1307,18 +1381,17 @@
                             fontStyle: 'bold'
                         },
                         columnStyles: {
-                            0: { cellWidth: 28 }, // INTERNO
-                            1: { cellWidth: 35 }, // TRAMITE
-                            2: { cellWidth: 45 }, // SOLICITANTE
-                            3: { cellWidth: 45 }, // COMPLEMENTARIA
-                            4: { cellWidth: 38 }, // ESTATUS
-                            5: { cellWidth: 35 }, // ESPECIALES
-                            6: { cellWidth: 'auto' } // CARPETA
+                            0: { cellWidth: 28 }, 
+                            1: { cellWidth: 35 }, 
+                            2: { cellWidth: 45 }, 
+                            3: { cellWidth: 45 }, 
+                            4: { cellWidth: 38 }, 
+                            5: { cellWidth: 35 }, 
+                            6: { cellWidth: 'auto' } 
                         },
                         margin: { top: 25, left: 14, right: 14, bottom: 20 },
                         rowPageBreak: 'avoid',
                         didDrawPage: function(data) {
-                            // --- Pie de página en cada hoja generada ---
                             const pageCount = doc.internal.getNumberOfPages();
                             const pageHeight = doc.internal.pageSize.getHeight();
                             doc.setFontSize(8);
@@ -1329,7 +1402,6 @@
                         }
                     });
 
-                    // Guardar el PDF y finalizar carga
                     doc.save(`IJA_Reporte_${tipo}_${new Date().getTime()}.pdf`);
                 } catch(err) {
                     console.error("Error al generar PDF nativo:", err);
@@ -1337,7 +1409,7 @@
                 } finally {
                     document.body.classList.remove('pdf-active');
                 }
-            }, 100); // 100ms dan tiempo al UI a mostrar "Procesando..."
+            }, 100); 
         }
 
         // Colores
@@ -1358,4 +1430,5 @@
     </script>
 </body>
 </html>
+
 

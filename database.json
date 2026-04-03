@@ -4275,5 +4275,28 @@
     "ubicacion": "",
     "documentos": [],
     "updatedAt": "2026-04-02T00:47:20.383Z"
+  },
+  {
+    "id": "1775185765880",
+    "internalNum": "01/2022",
+    "fechaInicio": "2026-04-02",
+    "status": "En proceso de solicitud",
+    "solicitante": "JUAN",
+    "complementaria": "JUAN",
+    "materia": "Familiar",
+    "tramite": "Mediación",
+    "asunto": "Divorcio mutuo consentimiento",
+    "ijaNum": "",
+    "fechaEnvioIJA": "",
+    "convenioFinal": "No",
+    "fechaFirma": "",
+    "menores": false,
+    "procuraduria": false,
+    "ubicacion": "",
+    "responsable": "",
+    "notas": "",
+    "documentos": [],
+    "updatedAt": "2026-04-03T03:09:25.881Z",
+    "_deleted": false
   }
 ]
